@@ -1,0 +1,346 @@
+{
+	"info": {
+		"name": "PayTag RFID API",
+		"description": "PayTag partner REST API endpoints for RFID item scanning and neutralization.\n\nBase URL: http://{{host}}:{{port}}\n\nFlow:\n1. POST /partner/GetItems \u2014 scan items on the surface\n2. POST /partner/Neutralize \u2014 deactivate RFID tags for paid items\n\nError codes (RFErrorCodeEnum):\n- 0: None (success)\n- 1: GeneralError\n- 2: HardwareGeneralError\n- 3: HardwareRequestTimeout\n- 4: ReaderNotConnected\n- 5: TagReadError\n- 6: ReaderBusy\n- 7: LowSignalStrength\n- 8: NeutralizerNotConnected\n- 9: HardTagReleaseError\n- 10: CommunicationError\n- 11: InvalidResponse\n- 12: CommandTimeout\n- 13: DataCorruption\n- 14: CommunicationReset\n- 15: SecurityViolation\n- 16: ConfigurationError\n- 17: NotAllTagsNeutralized",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "host",
+			"value": "localhost",
+			"type": "string"
+		},
+		{
+			"key": "port",
+			"value": "8765",
+			"type": "string"
+		},
+		{
+			"key": "TransactionNumber",
+			"value": "P01112340",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "1. Health Check",
+			"item": [
+				{
+					"name": "GET /info",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://{{host}}:{{port}}/info",
+							"protocol": "http",
+							"host": [
+								"{{host}}"
+							],
+							"port": "{{port}}",
+							"path": [
+								"info"
+							]
+						},
+						"description": "Check server connectivity and system status before calling partner endpoints."
+					},
+					"response": [
+						{
+							"name": "Server Reachable",
+							"status": "OK",
+							"code": 200,
+							"body": "{\n  \"timestamp\": \"2026-05-04T13:08:47Z\",\n  \"version\": \"3.6.31\",\n  \"machine_status\": {\n    \"reader_status\": true,\n    \"neutralizer_status\": true,\n    \"inventory_on\": false,\n    \"current_status\": \"idle\",\n    \"all_connected\": true\n  }\n}"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "2. GetItems",
+			"item": [
+				{
+					"name": "POST /partner/GetItems",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Response has required fields', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json).to.have.property('TransactionNumber');",
+									"    pm.expect(json).to.have.property('Items');",
+									"    pm.expect(json).to.have.property('ErrorCode');",
+									"    pm.expect(json).to.have.property('ErrorMessage');",
+									"});",
+									"",
+									"pm.test('ErrorCode is a number', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.ErrorCode).to.be.a('number');",
+									"});",
+									"",
+									"pm.test('Items is an array', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.Items).to.be.an('array');",
+									"});",
+									"",
+									"pm.test('TransactionNumber is echoed back', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.TransactionNumber).to.eql(pm.collectionVariables.get('TransactionNumber'));",
+									"});",
+									"",
+									"pm.test('Items have correct format', function () {",
+									"    var json = pm.response.json();",
+									"    if (json.Items.length > 0) {",
+									"        json.Items.forEach(function(item) {",
+									"            pm.expect(item).to.have.property('Barcode');",
+									"            pm.expect(item).to.have.property('RFID');",
+									"            pm.expect(item).to.have.property('IsHardTag');",
+									"            pm.expect(item.IsHardTag).to.be.a('boolean');",
+									"        });",
+									"    }",
+									"});",
+									"",
+									"// Save items for Neutralize request",
+									"var json = pm.response.json();",
+									"if (json.Items && json.Items.length > 0) {",
+									"    pm.collectionVariables.set('ScannedItems', JSON.stringify(json.Items));",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"TransactionNumber\": \"{{TransactionNumber}}\"\n}"
+						},
+						"url": {
+							"raw": "http://{{host}}:{{port}}/partner/GetItems",
+							"protocol": "http",
+							"host": [
+								"{{host}}"
+							],
+							"port": "{{port}}",
+							"path": [
+								"partner",
+								"GetItems"
+							]
+						},
+						"description": "Query items detected on the RFID reading surface.\n\nThe reader will activate if not already scanning. Returns all detected items with their Barcode, RFID, and IsHardTag status.\n\n**Request:**\n- `TransactionNumber` (string): Transaction identifier\n\n**Response:**\n- `TransactionNumber` (string): Echoed back\n- `Items` (array): Detected items with `Barcode`, `RFID`, `IsHardTag`\n- `ErrorCode` (int): 0 = success, see error codes in collection description\n- `ErrorMessage` (string|null): null on success, error description on failure"
+					},
+					"response": [
+						{
+							"name": "Success \u2014 Items Found",
+							"status": "OK",
+							"code": 200,
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"TransactionNumber\": \"P01112340\",\n  \"Items\": [\n    {\n      \"Barcode\": \"7290000000001\",\n      \"RFID\": \"E200001B0000000000000001\",\n      \"IsHardTag\": false\n    }\n  ],\n  \"ErrorCode\": 0,\n  \"ErrorMessage\": null\n}"
+						},
+						{
+							"name": "Success \u2014 No Items",
+							"status": "OK",
+							"code": 200,
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"TransactionNumber\": \"P01112340\",\n  \"Items\": [],\n  \"ErrorCode\": 0,\n  \"ErrorMessage\": \"Reader Connected, the are no items in the tub\"\n}"
+						},
+						{
+							"name": "Error \u2014 Reader Not Connected",
+							"status": "OK",
+							"code": 200,
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"TransactionNumber\": \"P01112340\",\n  \"Items\": [],\n  \"ErrorCode\": 4,\n  \"ErrorMessage\": \"Reader not connected\"\n}"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "3. Neutralize",
+			"item": [
+				{
+					"name": "POST /partner/Neutralize",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Response has required fields', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json).to.have.property('TransactionNumber');",
+									"    pm.expect(json).to.have.property('NeutralizedRFItems');",
+									"    pm.expect(json).to.have.property('FailedRFItems');",
+									"    pm.expect(json).to.have.property('ErrorCode');",
+									"    pm.expect(json).to.have.property('ErrorMessage');",
+									"});",
+									"",
+									"pm.test('ErrorCode is a number', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.ErrorCode).to.be.a('number');",
+									"});",
+									"",
+									"pm.test('NeutralizedRFItems is an array', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.NeutralizedRFItems).to.be.an('array');",
+									"});",
+									"",
+									"pm.test('FailedRFItems is an array', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.FailedRFItems).to.be.an('array');",
+									"});",
+									"",
+									"pm.test('TransactionNumber is echoed back', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.TransactionNumber).to.eql(pm.collectionVariables.get('TransactionNumber'));",
+									"});",
+									"",
+									"pm.test('Neutralized items have correct format', function () {",
+									"    var json = pm.response.json();",
+									"    if (json.NeutralizedRFItems.length > 0) {",
+									"        json.NeutralizedRFItems.forEach(function(item) {",
+									"            pm.expect(item).to.have.property('Barcode');",
+									"            pm.expect(item).to.have.property('RFID');",
+									"            pm.expect(item).to.have.property('IsHardTag');",
+									"            pm.expect(item.IsHardTag).to.be.a('boolean');",
+									"        });",
+									"    }",
+									"});"
+								]
+							}
+						},
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// Auto-populate Items from previous GetItems call if available",
+									"var savedItems = pm.collectionVariables.get('ScannedItems');",
+									"if (savedItems) {",
+									"    try {",
+									"        var items = JSON.parse(savedItems);",
+									"        // Strip IsHardTag for the request (not part of NeutralizeRequest)",
+									"        var neutralizeItems = items.map(function(item) {",
+									"            return { Barcode: item.Barcode, RFID: item.RFID };",
+									"        });",
+									"        pm.variables.set('NeutralizeItems', JSON.stringify(neutralizeItems));",
+									"    } catch(e) {",
+									"        pm.variables.set('NeutralizeItems', '[]');",
+									"    }",
+									"} else {",
+									"    pm.variables.set('NeutralizeItems', '[]');",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"TransactionNumber\": \"{{TransactionNumber}}\",\n  \"Items\": [\n    {\n      \"Barcode\": \"7290000000001\",\n      \"RFID\": \"E200001B0000000000000001\"\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "http://{{host}}:{{port}}/partner/Neutralize",
+							"protocol": "http",
+							"host": [
+								"{{host}}"
+							],
+							"port": "{{port}}",
+							"path": [
+								"partner",
+								"Neutralize"
+							]
+						},
+						"description": "Neutralize (deactivate) RFID tags for paid items.\n\nSend the list of items to neutralize after payment is confirmed. The system will deactivate the EAS tags so items can pass through security gates.\n\n**Request:**\n- `TransactionNumber` (string, required): Transaction identifier\n- `Items` (array): Items to neutralize, each with `Barcode` and `TagId`\n\n**Response:**\n- `TransactionNumber` (string): Echoed back\n- `NeutralizedRFItems` (array): Successfully neutralized items with `Barcode`, `RFID`, `IsHardTag`\n- `FailedRFItems` (array): Items that failed neutralization (same format)\n- `ErrorCode` (int): 0 = success, 17 = partial neutralization, see collection description for all codes\n- `ErrorMessage` (string|null): null on success, error description on failure"
+					},
+					"response": [
+						{
+							"name": "Success \u2014 All Neutralized",
+							"status": "OK",
+							"code": 200,
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"TransactionNumber\": \"P01112340\",\n  \"NeutralizedRFItems\": [\n    {\n      \"Barcode\": \"7290000000001\",\n      \"RFID\": \"E200001B0000000000000001\",\n      \"IsHardTag\": false\n    }\n  ],\n  \"FailedRFItems\": [],\n  \"ErrorCode\": 0,\n  \"ErrorMessage\": null\n}"
+						},
+						{
+							"name": "Partial \u2014 NotAllTagsNeutralized",
+							"status": "OK",
+							"code": 200,
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"TransactionNumber\": \"P01112340\",\n  \"NeutralizedRFItems\": [\n    {\n      \"Barcode\": \"7290000000001\",\n      \"RFID\": \"E200001B0000000000000001\",\n      \"IsHardTag\": false\n    }\n  ],\n  \"FailedRFItems\": [\n    {\n      \"Barcode\": \"7290000000002\",\n      \"RFID\": \"E200001B0000000000000002\",\n      \"IsHardTag\": false\n    }\n  ],\n  \"ErrorCode\": 17,\n  \"ErrorMessage\": \"Not all tags neutralized\"\n}"
+						},
+						{
+							"name": "Error \u2014 Hardware Disconnected",
+							"status": "OK",
+							"code": 200,
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"TransactionNumber\": \"P01112340\",\n  \"NeutralizedRFItems\": [],\n  \"FailedRFItems\": [],\n  \"ErrorCode\": 4,\n  \"ErrorMessage\": \"Neutralizer or Reader not connected\"\n}"
+						},
+						{
+							"name": "Error \u2014 Missing TransactionNumber",
+							"status": "Bad Request",
+							"code": 400,
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"TransactionNumber\": \"\",\n  \"NeutralizedRFItems\": [],\n  \"FailedRFItems\": [],\n  \"ErrorCode\": 1,\n  \"ErrorMessage\": \"TransactionNumber is required\"\n}"
+						}
+					]
+				}
+			]
+		}
+	]
+}

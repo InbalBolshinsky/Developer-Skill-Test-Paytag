@@ -1,0 +1,1 @@
+{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[{"mediaType":"application/vnd.oci.image.index.v1+json","digest":"sha256:f281adbe63e818de73e14736c501aa56dca03312c195c1df5dd3ad4045efca56","size":856,"annotations":{"io.containerd.image.name":"docker.io/library/paytag-demo-api:latest","org.opencontainers.image.ref.name":"latest"}}]}
