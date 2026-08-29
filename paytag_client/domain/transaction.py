@@ -14,6 +14,7 @@ class ItemFinalStatus(str, Enum):
     NEUTRALIZED = "neutralized"
     FAILED = "failed"
     HARD_TAG_PENDING_REMOVAL = "hard_tag_pending_removal"
+    UNCONFIRMED = "unconfirmed"
 
 
 @dataclass(frozen=True)
