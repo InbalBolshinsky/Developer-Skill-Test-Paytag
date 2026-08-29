@@ -1,0 +1,15 @@
+machine:
+  base_url: "http://localhost:8765"
+  request_timeout_seconds: 5
+
+session:
+  poll_interval_seconds: 1.5
+  neutralize_retry_count: 1
+
+hotkeys:
+  scan: "s"
+  neutralize: "n"
+
+mongo:
+  uri: "mongodb://localhost:27017"
+  db_name: "paytag"
