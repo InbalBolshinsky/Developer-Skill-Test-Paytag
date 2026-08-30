@@ -1,7 +1,5 @@
 # Planning Notes: PayTag Fast-Checkout Client
 
-The written plan required by the assignment brief, covering the six points it asks for.
-
 ## 1. Which endpoints we'll call, and when
 
 **`GET /info`** - called once at startup, before the hotkey listener starts, as a pre-flight check. Fails fast if the machine isn't reachable.
