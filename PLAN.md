@@ -16,7 +16,7 @@ Two things fell out of that:
 
 - **Poll interval** - balanced responsiveness against redundant load; ~1.5s felt right, made configurable rather than hardcoded.
 - **Concurrency at `N`** - the machine is a single shared resource, so pressing `N` immediately stops scheduling new polls, but lets an in-flight poll finish before `Neutralize` is sent. (Considered whether a separate payment-confirmation step would change this - it wouldn't; the rule is about never overlapping two live calls, independent of what comes next.)
-- **Mid-poll failures** - non-fatal: keep the last basket on screen (marked stale), keep retrying, escalate the warning after repeated failures, but never auto-abort - that's the operator's call.
+- **Mid-poll failures** - non-fatal: keep the last basket on screen (marked stale), keep retrying, but never auto-abort - that's the operator's call. The warning prints once when the outage starts and once on recovery, not on every failed poll in between - no escalation for a prolonged outage, since the API gives no signal to escalate on (every error code describes *what's* wrong, never *how long* it's been wrong), and a single unresolved warning already tells the operator something is broken for as long as it stays broken.
 
 **`POST /partner/Neutralize`** - triggered by `N`, built from the last known basket (`Barcode`+`RFID`). Items flagged `IsHardTag: true` are excluded from the request and tracked separately.
 
@@ -58,6 +58,8 @@ technical:
 { type: "app_log",      run_id, timestamp, level, message, transaction_number? }
 ```
 
+![1788091379726](image/PLAN/1788091379726.png)
+
 **Core decisions:**
 
 - **Embed items + outcome in `transactions`; reference everything else via `run_id`.** Items/outcome are small, bounded, always used with their transaction - the classical embed case. `Run`, `poll_failure`, `app_log` are unbounded over a run's lifetime, so they're referenced instead, avoiding MongoDB's 16MB document limit.
@@ -65,8 +67,6 @@ technical:
 - **`outcome` is nullable - but only for an aborted session** (`Ctrl+C` mid-session). `Neutralize` is called even when the basket is empty (confirmed live: an empty-`Items` request returns a clean `ErrorCode: 0`), so a normally *closed* session always gets a real outcome - never null, even if nothing was ever scanned.
 - **Poll issues surface on the business side as two bounded scalars** (`read_issue_count`, `last_read_issue_at`), not an embedded array - signals an issue without duplicating technical detail or risking unbounded growth.
 - **Transaction number is timestamp-based, not a UUID** - sortable, more compact than a UUID, and (now) millisecond-precision to make a collision practically impossible. It's stored as the document's own `_id` rather than a separate field - already unique and immutable, so it gets uniqueness enforcement for free, with no extra index to create or maintain.
-
-  *Found during testing, not planned upfront:* the original design used second-granularity (`P260828143005`) on the assumption that non-overlapping sessions can't collide - true for two sessions open *at the same time*, but not for two sessions in quick succession that happen to start within the same second (a fast operator closing one checkout and immediately opening the next). Live testing against the simulator confirmed this has real teeth: it permanently marks a `TransactionNumber` as "processed" once a real `Neutralize` call succeeds on it, and rejects any later call reusing that number. Worse, the resulting MongoDB `_id` collision on `insert_started` was found to corrupt `SessionManager`'s in-memory state - the session-guard got stuck open with no basket ever created, crashing the very next `N` press. Fixed two ways: transaction numbers now carry millisecond precision (removing the collision risk at its source), and `start_session` no longer marks a session as open until `insert_started` has actually succeeded (so *any* insert failure, not just this one, fails safely instead of corrupting state).
 - **Clean shutdown on `Ctrl+C`** marks any open transaction `aborted` and writes `run_ended`; a hard kill is accepted as an orphaned `run_started` - meaningful on its own, not engineered around.
 
 ## 4. How each error path will be covered
@@ -159,7 +159,6 @@ Most alternatives are documented inline at the point where the decision was made
 - Embedding vs. referencing scanned items and the neutralization outcome - point 3
 - UUID vs. timestamp-based transaction numbers - point 3
 - Blanket retry vs. failure-scoped retry for `Neutralize` - point 4
-- ANSI color vs. plain-text symbols - point 5
 
 Two more, not captured elsewhere:
 

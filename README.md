@@ -6,9 +6,10 @@ A hotkey-driven fast-checkout client for PayTag self-checkout machines: scans RF
 
 ## Prerequisites
 
-- Python 3.x
+- Python 3.10+ (uses `X | None` union syntax throughout)
 - Docker (to run the provided PayTag simulator)
 - A local MongoDB instance (native install or Docker)
+- **macOS only:** the terminal app you run this from needs the Accessibility permission granted once, under System Settings → Privacy & Security → Accessibility. This is required for `pynput` to capture the `S`/`N` hotkeys globally (see PLAN.md §2 for why `pynput` was chosen). Without it, the client still starts and runs, but keypresses won't be detected.
 
 ## Running the PayTag simulator
 
@@ -35,12 +36,39 @@ docker run -d -p 27017:27017 mongo
 
 ## Configuration
 
-All tunables (hotkeys, poll interval, MongoDB URI, retry counts, etc.) load from a YAML config file rather than being hardcoded - see PLAN.md for the full design.
+All tunables (hotkeys, poll interval, MongoDB URI, retry counts, etc.) load from `config.yaml` rather than being hardcoded - see PLAN.md for the full design. The committed `config.yaml` already points at the defaults above (`localhost:8765`, `localhost:27017`, `S`/`N` hotkeys) and needs no edits to run as-is.
+
+## Installing dependencies
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
 
 ## Running the client
 
-*Implementation in progress - this section will be filled in with the exact install/run steps once the client is built.*
+With the simulator and MongoDB both running (see above):
+
+```bash
+python3 main.py
+```
+
+On startup it runs a pre-flight check against the machine, connects to MongoDB, and prints `Ready.` once both succeed - it exits immediately with a clear message if either is unreachable. From there:
+
+- Press **`S`** anywhere on the system to start a checkout session - the basket is polled and printed as items are scanned.
+- Press **`N`** to close the session and neutralize the basket; hard-tagged items are excluded and reported separately for manual removal.
+- **`Ctrl+C`** exits cleanly at any time, marking any open session as aborted.
+
+See PLAN.md §5 for a full example of what the terminal output looks like, including the mid-poll failure and unconfirmed-neutralization cases.
+
+## Running tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
 
 ## Status
 
-Design and written plan complete (see `PLAN.md`); implementation in progress.
+Design, written plan, and implementation complete. Verified end-to-end against the real simulator and a real local MongoDB instance.
