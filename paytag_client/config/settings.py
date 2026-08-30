@@ -13,6 +13,7 @@ class Settings:
     neutralize_hotkey: str
     mongo_uri: str
     mongo_db_name: str
+    mongo_server_selection_timeout_seconds: float
 
 
 def load_settings(path: str) -> Settings:
@@ -28,4 +29,5 @@ def load_settings(path: str) -> Settings:
         neutralize_hotkey=raw["hotkeys"]["neutralize"],
         mongo_uri=raw["mongo"]["uri"],
         mongo_db_name=raw["mongo"]["db_name"],
+        mongo_server_selection_timeout_seconds=raw["mongo"]["server_selection_timeout_seconds"],
     )

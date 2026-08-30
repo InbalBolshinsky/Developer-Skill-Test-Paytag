@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from paytag_client.api.models import Item
+from paytag_client.api.models import HealthStatus, Item
 from paytag_client.domain.clock import Clock
 from paytag_client.domain.transaction import ItemFinalStatus, TransactionItemRecord, TransactionOutcome
 
@@ -14,6 +14,39 @@ class TerminalReporter:
     def _log(self, message: str) -> None:
         timestamp = self._clock.now().strftime("%H:%M:%S")
         print(f"[{timestamp}] {message}")
+
+    @staticmethod
+    def _plural(count: int, word: str) -> str:
+        return word if count == 1 else f"{word}s"
+
+    def startup(self) -> None:
+        self._log("PayTag Fast-Checkout Client")
+
+    def config_loaded(self) -> None:
+        self._log("Config loaded from config.yaml")
+
+    def report_machine_check(self, base_url: str, health: HealthStatus | None) -> None:
+        timestamp = self._clock.now().strftime("%H:%M:%S")
+        print(f"[{timestamp}] Checking machine at {base_url} ... ", end="")
+        if health is None:
+            print("UNREACHABLE")
+            return
+
+        reader = "connected" if health.reader_connected else "disconnected"
+        neutralizer = "connected" if health.neutralizer_connected else "disconnected"
+        print(f"OK (v{health.version}, reader: {reader}, neutralizer: {neutralizer})")
+
+    def mongo_unreachable(self) -> None:
+        self._log("Could not reach MongoDB. Exiting.")
+
+    def ready(self) -> None:
+        self._log("Ready. Press S to start a checkout session, Ctrl+C to exit.")
+
+    def shutting_down_idle(self) -> None:
+        self._log("Shutting down — no active session.")
+
+    def goodbye(self) -> None:
+        self._log("Goodbye.")
 
     def session_started(self, transaction_number: str) -> None:
         self._known_rfids = set()
@@ -51,19 +84,17 @@ class TerminalReporter:
 
         self._known_rfids = current_rfids
         hard_tag_count = sum(1 for item in items if item.is_hard_tag)
-        hard_tag_note = f" ({hard_tag_count} hard tag{'s' if hard_tag_count != 1 else ''})" if hard_tag_count else ""
+        hard_tag_note = f" ({hard_tag_count} {self._plural(hard_tag_count, 'hard tag')})" if hard_tag_count else ""
         self._log(f"Basket now has {len(items)} items{hard_tag_note}")
 
     def closing_session(self, total_items: int, hard_tag_count: int, neutralize_count: int) -> None:
         if hard_tag_count:
-            tag_word = "tag" if hard_tag_count == 1 else "tags"
-            hard_tag_note = f" ({hard_tag_count} hard {tag_word} excluded from neutralization)"
+            hard_tag_note = f" ({hard_tag_count} {self._plural(hard_tag_count, 'hard tag')} excluded from neutralization)"
         else:
             hard_tag_note = ""
         self._log(f"Closing session — finalizing basket: {total_items} items{hard_tag_note}")
 
-        item_word = "item" if neutralize_count == 1 else "items"
-        self._log(f"Neutralizing {neutralize_count} {item_word}...")
+        self._log(f"Neutralizing {neutralize_count} {self._plural(neutralize_count, 'item')}...")
 
     def session_closed(
         self,
@@ -83,8 +114,7 @@ class TerminalReporter:
     def session_aborted(self, transaction_number: str) -> None:
         self._log(f"Shutting down — session {transaction_number} marked as aborted")
 
-    @staticmethod
-    def _print_action_required(ended_at: datetime, error_message: str | None) -> None:
+    def _print_action_required(self, ended_at: datetime, error_message: str | None) -> None:
         timestamp = ended_at.strftime("%H:%M:%S")
         print()
         print(" ACTION REQUIRED ".center(77, "="))
@@ -93,8 +123,8 @@ class TerminalReporter:
         print("=" * 77)
         print()
 
-    @staticmethod
     def _print_checkout_result(
+        self,
         transaction_number: str,
         started_at: datetime,
         ended_at: datetime,
@@ -105,15 +135,17 @@ class TerminalReporter:
         failed = [r for r in item_records if r.final_status == ItemFinalStatus.FAILED]
         hard_tags = [r for r in item_records if r.final_status == ItemFinalStatus.HARD_TAG_PENDING_REMOVAL]
 
+        hard_tag_detail = ""
+        if hard_tags:
+            barcodes = ", ".join(f"barcode {r.barcode}" for r in hard_tags)
+            hard_tag_detail = f" ({barcodes})"
+
         print()
         print(f" CHECKOUT RESULT — {transaction_number} ".center(77, "="))
         print(f" Closed at {ended_at.strftime('%H:%M:%S')} (session lasted {duration}s)")
         print()
-        print(f" ✓ Neutralized:                {len(neutralized)} item{'s' if len(neutralized) != 1 else ''}")
-        print(f" ✗ Failed:                     {len(failed)} item{'s' if len(failed) != 1 else ''}")
-        if hard_tags:
-            barcodes = ", ".join(f"barcode {r.barcode}" for r in hard_tags)
-            plural = "s" if len(hard_tags) != 1 else ""
-            print(f" ⚠ HARD TAG — REMOVE MANUALLY: {len(hard_tags)} item{plural} ({barcodes})")
+        print(f" ✓ Neutralized:                {len(neutralized)} {self._plural(len(neutralized), 'item')}")
+        print(f" ✗ Failed:                     {len(failed)} {self._plural(len(failed), 'item')}")
+        print(f" ⚠ HARD TAG — REMOVE MANUALLY: {len(hard_tags)} {self._plural(len(hard_tags), 'item')}{hard_tag_detail}")
         print("=" * 77)
         print()

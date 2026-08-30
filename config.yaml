@@ -13,3 +13,4 @@ hotkeys:
 mongo:
   uri: "mongodb://localhost:27017"
   db_name: "paytag"
+  server_selection_timeout_seconds: 5

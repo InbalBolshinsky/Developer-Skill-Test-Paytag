@@ -3,10 +3,9 @@ import time
 from datetime import datetime
 
 from paytag_client.api.client import PayTagClient
-from paytag_client.api.models import ErrorCode
+from paytag_client.api.models import ErrorCode, Item, NeutralizeResult
 from paytag_client.domain.basket import Basket
 from paytag_client.domain.clock import Clock
-from paytag_client.api.models import Item, NeutralizeResult
 from paytag_client.domain.transaction import (
     ItemFinalStatus,
     Transaction,
@@ -132,6 +131,9 @@ class SessionManager:
         self._transaction = None
         self._basket = None
 
+    def has_open_session(self) -> bool:
+        return self._transaction is not None
+
     def shutdown(self) -> None:
         if self._transaction is not None:
             self._stop_poll_thread()
@@ -183,32 +185,28 @@ class SessionManager:
         return previously_sent
 
     @staticmethod
+    def _records_for(
+        items: list[Item], is_hard_tag: bool, status: ItemFinalStatus
+    ) -> list[TransactionItemRecord]:
+        return [TransactionItemRecord(item.barcode, item.rfid, is_hard_tag, status) for item in items]
+
+    @classmethod
     def _build_item_records(
+        cls,
         hard_tag_items: list[Item],
         attempted_items: list[Item],
         result: NeutralizeResult,
     ) -> list[TransactionItemRecord]:
-        records = [
-            TransactionItemRecord(item.barcode, item.rfid, True, ItemFinalStatus.HARD_TAG_PENDING_REMOVAL)
-            for item in hard_tag_items
-        ]
+        records = cls._records_for(hard_tag_items, True, ItemFinalStatus.HARD_TAG_PENDING_REMOVAL)
 
         if not result.transport_ok:
-            records += [
-                TransactionItemRecord(item.barcode, item.rfid, False, ItemFinalStatus.UNCONFIRMED)
-                for item in attempted_items
-            ]
-            return records
+            return records + cls._records_for(attempted_items, False, ItemFinalStatus.UNCONFIRMED)
 
-        records += [
-            TransactionItemRecord(item.barcode, item.rfid, False, ItemFinalStatus.NEUTRALIZED)
-            for item in result.neutralized_items
-        ]
-        records += [
-            TransactionItemRecord(item.barcode, item.rfid, False, ItemFinalStatus.FAILED)
-            for item in result.failed_items
-        ]
-        return records
+        return (
+            records
+            + cls._records_for(result.neutralized_items, False, ItemFinalStatus.NEUTRALIZED)
+            + cls._records_for(result.failed_items, False, ItemFinalStatus.FAILED)
+        )
 
     @staticmethod
     def _build_outcome(result: NeutralizeResult) -> TransactionOutcome:
