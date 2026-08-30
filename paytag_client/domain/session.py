@@ -44,7 +44,8 @@ class SessionManager:
 
     @staticmethod
     def _generate_transaction_number(at: datetime) -> str:
-        return f"P{at.strftime('%y%m%d%H%M%S')}"
+        milliseconds = at.microsecond // 1000
+        return f"P{at.strftime('%y%m%d%H%M%S')}{milliseconds:03d}"
 
     def start_session(self) -> None:
         if self._transaction is not None:
@@ -52,14 +53,14 @@ class SessionManager:
 
         started_at = self._clock.now()
         transaction_number = self._generate_transaction_number(started_at)
-
-        self._transaction = Transaction(
+        transaction = Transaction(
             transaction_number=transaction_number,
             run_id=self._run_id,
             started_at=started_at,
         )
-        self._transactions_repo.insert_started(self._transaction)
+        self._transactions_repo.insert_started(transaction)
 
+        self._transaction = transaction
         self._basket = Basket()
         self._reporter.session_started(transaction_number)
 
@@ -121,15 +122,18 @@ class SessionManager:
         self._reporter.closing_session(len(self._basket.items), len(hard_tag_items), len(to_neutralize))
         result, attempted_items = self._neutralize_with_retry(transaction_number, to_neutralize)
 
-        item_records = self._build_item_records(hard_tag_items, attempted_items, result)
-        outcome = self._build_outcome(result)
-
-        ended_at = self._clock.now()
-        self._transactions_repo.mark_closed(transaction_number, ended_at, item_records, outcome)
-        self._reporter.session_closed(transaction_number, started_at, ended_at, item_records, outcome)
-
+        # Neutralize is a real, irreversible action and it has already happened by this point.
+        # Clear session state now, before persistence — a Mongo failure below must never leave
+        # the session "open" and risk a second Neutralize call on already-neutralized items.
         self._transaction = None
         self._basket = None
+
+        item_records = self._build_item_records(hard_tag_items, attempted_items, result)
+        outcome = self._build_outcome(result)
+        ended_at = self._clock.now()
+
+        self._reporter.session_closed(transaction_number, started_at, ended_at, item_records, outcome)
+        self._transactions_repo.mark_closed(transaction_number, ended_at, item_records, outcome)
 
     def has_open_session(self) -> bool:
         return self._transaction is not None

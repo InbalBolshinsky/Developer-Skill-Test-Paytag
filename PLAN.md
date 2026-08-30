@@ -41,7 +41,7 @@ Two collections: `transactions` (business) and `technical` (technical, polymorph
 ```
 transactions:
 {
-  _id: transaction_number,   // e.g. "P260828143005" - the transaction number doubles as the document's own key
+  _id: transaction_number,   // e.g. "P260828143005123" - the transaction number doubles as the document's own key
   run_id,
   started_at, ended_at,
   status: "closed" | "aborted",
@@ -64,7 +64,9 @@ technical:
 - **Neutralization outcome is a field, not its own collection** - 1-to-1 with a transaction, created at the same moment; a separate collection would just add a join for no benefit.
 - **`outcome` is nullable - but only for an aborted session** (`Ctrl+C` mid-session). `Neutralize` is called even when the basket is empty (confirmed live: an empty-`Items` request returns a clean `ErrorCode: 0`), so a normally *closed* session always gets a real outcome - never null, even if nothing was ever scanned.
 - **Poll issues surface on the business side as two bounded scalars** (`read_issue_count`, `last_read_issue_at`), not an embedded array - signals an issue without duplicating technical detail or risking unbounded growth.
-- **Transaction number is timestamp-based, not a UUID** - sortable, more compact, and collision-free by construction since sessions can't overlap (point 2). It's stored as the document's own `_id` rather than a separate field - already unique and immutable, so it gets uniqueness enforcement for free, with no extra index to create or maintain.
+- **Transaction number is timestamp-based, not a UUID** - sortable, more compact than a UUID, and (now) millisecond-precision to make a collision practically impossible. It's stored as the document's own `_id` rather than a separate field - already unique and immutable, so it gets uniqueness enforcement for free, with no extra index to create or maintain.
+
+  *Found during testing, not planned upfront:* the original design used second-granularity (`P260828143005`) on the assumption that non-overlapping sessions can't collide - true for two sessions open *at the same time*, but not for two sessions in quick succession that happen to start within the same second (a fast operator closing one checkout and immediately opening the next). Live testing against the simulator confirmed this has real teeth: it permanently marks a `TransactionNumber` as "processed" once a real `Neutralize` call succeeds on it, and rejects any later call reusing that number. Worse, the resulting MongoDB `_id` collision on `insert_started` was found to corrupt `SessionManager`'s in-memory state - the session-guard got stuck open with no basket ever created, crashing the very next `N` press. Fixed two ways: transaction numbers now carry millisecond precision (removing the collision risk at its source), and `start_session` no longer marks a session as open until `insert_started` has actually succeeded (so *any* insert failure, not just this one, fails safely instead of corrupting state).
 - **Clean shutdown on `Ctrl+C`** marks any open transaction `aborted` and writes `run_ended`; a hard kill is accepted as an orphaned `run_started` - meaningful on its own, not engineered around.
 
 ## 4. How each error path will be covered
@@ -100,7 +102,7 @@ Every line is timestamped (`HH:MM:SS`) so the operator can always tell exactly w
 [14:30:00] Checking machine at localhost:8765 ... OK (v3.8.34, reader: connected, neutralizer: connected)
 [14:30:00] Ready. Press S to start a checkout session, Ctrl+C to exit.
 
-[14:30:05] Session P260828143005 started - scanning...
+[14:30:05] Session P260828143005123 started - scanning...
 [14:30:06]   + Item added: barcode 7290000000001 (RFID E200001B...0001)
 [14:30:08]   + Item added: barcode 7290000000002 (RFID E200001B...0002) - HARD TAG
 [14:30:08] Basket now has 2 items (1 hard tag)
@@ -111,7 +113,7 @@ Every line is timestamped (`HH:MM:SS`) so the operator can always tell exactly w
 [14:30:25] Closing session - finalizing basket: 2 items (1 hard tag excluded from neutralization)
 [14:30:25] Neutralizing 1 item...
 
-==================== CHECKOUT RESULT - P260828143005 ====================
+================== CHECKOUT RESULT - P260828143005123 ==================
  Closed at 14:30:26 (session lasted 21s)
 
  ✓ Neutralized:                1 item
@@ -135,7 +137,7 @@ If `Neutralize` can't be confirmed (a communication failure - point 4), the outc
 =============================================================================
 ```
 
-And if `Ctrl+C` happens mid-session instead of at idle: `[14:35:02] Shutting down — session P260828143005 marked as aborted`.
+And if `Ctrl+C` happens mid-session instead of at idle: `[14:35:02] Shutting down — session P260828143005123 marked as aborted`.
 
 **Core decisions:**
 

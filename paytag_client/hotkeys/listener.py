@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Callable
 
 from pynput import keyboard
@@ -31,9 +32,20 @@ class HotkeyListener:
             return
 
         if pressed == self._scan_key:
-            self._on_scan()
+            self._safe_call(self._on_scan)
         elif pressed == self._neutralize_key:
-            self._on_neutralize()
+            self._safe_call(self._on_neutralize)
+
+    @staticmethod
+    def _safe_call(callback: Callable[[], None]) -> None:
+        # A pynput listener callback that raises gets the whole listener stopped
+        # permanently (see pynput's _emitter). One failed keypress must never cost
+        # the rest of the run's ability to respond to hotkeys at all.
+        try:
+            callback()
+        except Exception as e:
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            print(f"[{timestamp}] ⚠ Internal error handling that keypress: {e}. Still running — try again.")
 
     @staticmethod
     def _char_for(key) -> str | None:
