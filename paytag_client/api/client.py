@@ -14,6 +14,7 @@ class PayTagClient:
         self._base_url = base_url
         self._timeout = request_timeout_seconds
 
+    # None means "machine not usable" for any reason (no response or non-200); the caller fails fast on it.
     def get_health(self) -> HealthStatus | None:
         try:
             response = requests.get(f"{self._base_url}/info", timeout=self._timeout)
@@ -32,6 +33,8 @@ class PayTagClient:
             all_connected=machine_status["all_connected"],
         )
 
+    # Result reports three independent channels (transport / HTTP status / ErrorCode) so callers
+    # can tell a dropped connection from an error response; no exceptions escape.
     def get_items(self, transaction_number: str) -> GetItemsResult:
         try:
             response = requests.post(

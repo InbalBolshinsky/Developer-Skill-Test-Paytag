@@ -13,9 +13,11 @@ from paytag_client.domain.transaction import (
 class TransactionRepository:
     def __init__(self, collection: Collection):
         self._collection = collection
+        # Index supports status queries (hard tags pending removal, failed items) without a full scan.
         self._collection.create_index("items.final_status")
 
     def insert_started(self, transaction: Transaction) -> None:
+        # Write the full skeleton up front so every later write is a pure $set on an existing doc.
         self._collection.insert_one({
             "_id": transaction.transaction_number,
             "run_id": transaction.run_id,
@@ -74,5 +76,6 @@ class TransactionRepository:
 
     @staticmethod
     def _require_matched(matched_count: int, transaction_number: str) -> None:
+        # A missing document mid-run (e.g. dropped collection) is a hard error, not a silent no-op.
         if matched_count == 0:
             raise ValueError(f"No transaction document found for transaction_number={transaction_number!r}")

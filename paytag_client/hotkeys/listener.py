@@ -49,5 +49,6 @@ class HotkeyListener:
 
     @staticmethod
     def _char_for(key) -> str | None:
+        # Modifier / special keys (shift, arrows, ...) have no .char and are simply ignored.
         char = getattr(key, "char", None)
         return char.lower() if char is not None else None

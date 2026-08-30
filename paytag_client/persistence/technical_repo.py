@@ -5,6 +5,8 @@ from pymongo.collection import Collection
 from paytag_client.api.models import ErrorCode, HealthStatus
 
 
+# One polymorphic collection, discriminated by the `type` field (run_started, health_check,
+# poll_failure, app_log, ...); the compound index matches the "all events of a type for a run" query.
 class TechnicalRepository:
     def __init__(self, collection: Collection):
         self._collection = collection

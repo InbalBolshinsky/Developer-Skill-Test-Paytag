@@ -12,6 +12,7 @@ class Basket:
 
     @staticmethod
     def from_items(items: list[Item], confirmed_at: datetime) -> "Basket":
+        # Dedupe by RFID: identity is the RFID, not the barcode, and one response can repeat an item.
         deduplicated = list({item.rfid: item for item in items}.values())
         return Basket(items=deduplicated, last_confirmed_at=confirmed_at, is_stale=False)
 

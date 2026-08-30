@@ -26,6 +26,7 @@ def main() -> None:
 
     api_client = PayTagClient(settings.machine_base_url, settings.machine_request_timeout_seconds)
 
+    # Pre-flight: gate the hotkey listener on a reachable machine so no session can start blind.
     health = api_client.get_health()
     reporter.report_machine_check(settings.machine_base_url, health)
     if health is None:
@@ -44,6 +45,7 @@ def main() -> None:
         sys.exit(1)
 
     run_id = str(uuid.uuid4())
+    # A hard kill leaves an orphan run_started with no run_ended; accepted by design (PLAN §3).
     technical_repo.log_run_started(run_id, clock.now())
     technical_repo.log_health_check(run_id, clock.now(), health)
 
@@ -68,12 +70,13 @@ def main() -> None:
 
     reporter.ready()
 
+    # SIGINT only flips the event; the actual shutdown runs here on the main thread, not in the handler.
     shutdown_requested = threading.Event()
     signal.signal(signal.SIGINT, lambda signum, frame: shutdown_requested.set())
     shutdown_requested.wait()
 
     listener.stop()
-    was_open = session_manager.has_open_session()
+    was_open = session_manager.has_open_session()  # capture before shutdown() clears it
     session_manager.shutdown()
     if not was_open:
         reporter.shutting_down_idle()

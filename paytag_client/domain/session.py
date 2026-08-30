@@ -44,10 +44,13 @@ class SessionManager:
 
     @staticmethod
     def _generate_transaction_number(at: datetime) -> str:
+        # Timestamp-based, millisecond precision for collision resistance; also used as the Mongo _id.
         milliseconds = at.microsecond // 1000
         return f"P{at.strftime('%y%m%d%H%M%S')}{milliseconds:03d}"
 
     def start_session(self) -> None:
+        # Session-open guard: a second S while a session is live is business logic, so it lives here
+        # rather than in the listener.
         if self._transaction is not None:
             return
 
@@ -74,6 +77,8 @@ class SessionManager:
 
             self._poll_once()
 
+            # Interval measured from cycle start so a slow poll doesn't compound the gap;
+            # wait() is both the sleep and the cancellation point when N / Ctrl+C fires.
             elapsed = time.monotonic() - cycle_start
             self._stop_polling.wait(max(0.0, self._poll_interval_seconds - elapsed))
 
@@ -81,6 +86,9 @@ class SessionManager:
         result = self._api.get_items(self._transaction.transaction_number)
         now = self._clock.now()
 
+        # Branch order is deliberate: success first, then HTTP 400 (our own bug — log it, but the
+        # basket on screen is still valid), then any transient fault (keep the stale basket, keep
+        # retrying, warn once — never auto-abort; that's the operator's call).
         if result.transport_ok and result.error_code == ErrorCode.NONE:
             self._basket = Basket.from_items(result.items, now)
             self._reporter.basket_updated(self._basket.items)
@@ -203,6 +211,8 @@ class SessionManager:
 
     @staticmethod
     def _retry_scope(result: NeutralizeResult, previously_sent: list[Item]) -> list[Item] | None:
+        # Full resend whenever it's unclear what the machine actually touched; a scoped resend of
+        # just the failed subset only for code 17, the one response that tells us. None = don't retry.
         if not result.transport_ok:
             return previously_sent
 
@@ -229,6 +239,7 @@ class SessionManager:
     ) -> list[TransactionItemRecord]:
         records = cls._records_for(hard_tag_items, True, ItemFinalStatus.HARD_TAG_PENDING_REMOVAL)
 
+        # Connection lost mid-request: every attempted item is UNCONFIRMED, never assumed neutralized.
         if not result.transport_ok:
             return records + cls._records_for(attempted_items, False, ItemFinalStatus.UNCONFIRMED)
 
@@ -240,6 +251,8 @@ class SessionManager:
 
     @staticmethod
     def _build_outcome(result: NeutralizeResult) -> TransactionOutcome:
+        # error_code=None is the "unconfirmed" sentinel — the only case outcome is null on a closed
+        # transaction (an aborted one is null because Neutralize never ran).
         if not result.transport_ok:
             return TransactionOutcome(
                 error_code=None,

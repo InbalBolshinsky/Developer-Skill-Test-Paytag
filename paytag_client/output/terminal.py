@@ -54,6 +54,7 @@ class TerminalReporter:
         self._log(f"Session {transaction_number} started — scanning...")
 
     def poll_issue(self, error_message: str | None, basket_as_of: datetime | None) -> None:
+        # Warn once when an outage starts, once on recovery (basket_updated) — not per failed poll.
         if self._issue_active:
             return
         self._issue_active = True
@@ -63,6 +64,7 @@ class TerminalReporter:
         self._log(f"⚠ Could not read the scanner ({reason}) — showing basket as of {as_of}, retrying...")
 
     def basket_updated(self, items: list[Item]) -> None:
+        # Print only what changed since the last poll, not the full basket every ~1.5s tick.
         current_rfids = {item.rfid for item in items}
         new_items = [item for item in items if item.rfid not in self._known_rfids]
 
@@ -104,6 +106,7 @@ class TerminalReporter:
         item_records: list[TransactionItemRecord],
         outcome: TransactionOutcome,
     ) -> None:
+        # error_code is None => neutralization could not be confirmed: distinct block, can't be skimmed past.
         if outcome.error_code is None:
             self._print_action_required(ended_at, outcome.error_message)
         else:

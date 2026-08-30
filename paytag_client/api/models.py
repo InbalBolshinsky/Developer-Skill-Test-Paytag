@@ -31,6 +31,7 @@ class Item:
 
     @staticmethod
     def from_dict(d: dict) -> "Item":
+        # Pick only known fields on purpose: a firmware update adding fields must not break parsing.
         return Item(
             barcode=d["Barcode"],
             rfid=d["RFID"],
@@ -46,6 +47,8 @@ class HealthStatus:
     all_connected: bool
 
 
+# Three-channel API outcome: transport_ok (did we get a response), http_status, and the
+# application ErrorCode. Every caller checks all three rather than trusting the JSON body alone.
 @dataclass(frozen=True)
 class GetItemsResult:
     transport_ok: bool
