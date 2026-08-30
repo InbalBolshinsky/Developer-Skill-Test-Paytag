@@ -75,4 +75,4 @@ Design, written plan, and implementation complete. Verified end-to-end against t
 
 ## AI assistance
 
-Claude (via Claude Code) was used during development: for code review, a commenting pass, and as a sounding board on design trade-offs. All decisions in PLAN.md are my own, and I'm fully accountable for the implementation.
+Claude (via Claude Code) was used during development: for code review, a commenting pass, and as a sounding board on design trade-offs. All decisions in PLAN.md are my own.
