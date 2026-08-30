@@ -106,7 +106,7 @@ class SessionManager:
             error_message=result.error_message,
         )
         self._transactions_repo.record_read_issue(self._transaction.transaction_number, now)
-        self._reporter.poll_issue(result.error_message)
+        self._reporter.poll_issue(result.error_message, self._basket.last_confirmed_at)
 
     def end_session(self) -> None:
         if self._transaction is None:
@@ -115,9 +115,11 @@ class SessionManager:
         self._stop_poll_thread()
 
         transaction_number = self._transaction.transaction_number
+        started_at = self._transaction.started_at
         hard_tag_items = self._basket.hard_tag_items()
         to_neutralize = self._basket.neutralizable_items()
 
+        self._reporter.closing_session(len(self._basket.items), len(hard_tag_items), len(to_neutralize))
         result, attempted_items = self._neutralize_with_retry(transaction_number, to_neutralize)
 
         item_records = self._build_item_records(hard_tag_items, attempted_items, result)
@@ -125,7 +127,7 @@ class SessionManager:
 
         ended_at = self._clock.now()
         self._transactions_repo.mark_closed(transaction_number, ended_at, item_records, outcome)
-        self._reporter.session_closed(transaction_number, item_records, outcome)
+        self._reporter.session_closed(transaction_number, started_at, ended_at, item_records, outcome)
 
         self._transaction = None
         self._basket = None
