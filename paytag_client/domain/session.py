@@ -157,6 +157,7 @@ class SessionManager:
     ) -> tuple[NeutralizeResult, list[Item]]:
         to_send = items
         result = self._api.neutralize(transaction_number, to_send)
+        self._log_neutralize_failure(transaction_number, result)
 
         for _ in range(self._neutralize_retry_count):
             if result.transport_ok and result.error_code == ErrorCode.NONE:
@@ -168,8 +169,33 @@ class SessionManager:
 
             to_send = next_to_send
             result = self._api.neutralize(transaction_number, to_send)
+            self._log_neutralize_failure(transaction_number, result)
 
         return result, to_send
+
+    def _log_neutralize_failure(self, transaction_number: str, result: NeutralizeResult) -> None:
+        if result.transport_ok and result.error_code == ErrorCode.NONE:
+            return
+
+        now = self._clock.now()
+        if result.http_status == 400:
+            self._technical_repo.log_app_event(
+                run_id=self._run_id,
+                timestamp=now,
+                level="error",
+                message=f"Neutralize returned HTTP 400: {result.error_message}",
+                transaction_number=transaction_number,
+            )
+            return
+
+        self._technical_repo.log_poll_failure(
+            run_id=self._run_id,
+            transaction_number=transaction_number,
+            timestamp=now,
+            endpoint="Neutralize",
+            error_code=result.error_code,
+            error_message=result.error_message,
+        )
 
     @staticmethod
     def _retry_scope(result: NeutralizeResult, previously_sent: list[Item]) -> list[Item] | None:
