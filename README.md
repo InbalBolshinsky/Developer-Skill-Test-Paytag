@@ -9,7 +9,7 @@ A hotkey-driven fast-checkout client for PayTag self-checkout machines: scans RF
 - Python 3.10+ (uses `X | None` union syntax throughout)
 - Docker (to run the provided PayTag simulator)
 - A local MongoDB instance (native install or Docker)
-- **macOS only:** the terminal app you run this from needs the Accessibility permission granted once, under System Settings → Privacy & Security → Accessibility. This is required for `pynput` to capture the `S`/`N` hotkeys globally (see PLAN.md §2 for why `pynput` was chosen). Without it, the client still starts and runs, but keypresses won't be detected.
+- **macOS only:** the terminal app you run this from needs the Accessibility permission granted once, under System Settings → Privacy & Security → Accessibility. This is required for `pynput` to capture the `S`/`N` hotkeys globally (see PLAN.md section 2 for why `pynput` was chosen). Without it, the client still starts and runs, but keypresses won't be detected.
 
 ## Running the PayTag simulator
 
@@ -60,7 +60,7 @@ On startup it runs a pre-flight check against the machine, connects to MongoDB, 
 - Press **`N`** to close the session and neutralize the basket; hard-tagged items are excluded and reported separately for manual removal.
 - **`Ctrl+C`** exits cleanly at any time, marking any open session as aborted.
 
-See PLAN.md §5 for a full example of what the terminal output looks like, including the mid-poll failure and unconfirmed-neutralization cases.
+See PLAN.md section 5 for a full example of what the terminal output looks like, including the mid-poll failure and unconfirmed-neutralization cases.
 
 ## Running tests
 
