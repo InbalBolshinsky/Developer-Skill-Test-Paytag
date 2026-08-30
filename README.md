@@ -28,7 +28,7 @@ curl http://localhost:8765/info
 
 ## Running MongoDB
 
-Either install natively, or run via Docker:
+To run via Docker:
 
 ```bash
 docker run -d -p 27017:27017 mongo
